@@ -159,3 +159,56 @@ Spring AI 内置了几种 Chat Memory,可以将对话存储到不同的数据源
 - CassandraChatMemory : Cassandra 数据库存储，对话内容存储在 Cassandra 数据库中，带有过期时间的持久化存储
 - Neo4jChatMemory : Neo4j 图数据库存储，对话内容存储在 Neo4j 图数据库, 没有过期时间限制的持久化存储
 - JdbcChatMemory : Jdbc 数据库存储，对话内容存储在 Jdbc 数据库中，没有过期时间的持久化存储
+
+## 3、多轮对话 AI 应用开发
+### 3.1、初始化 ChatClient 对象。
+使用 SpringBoot 的构造器注入方式来注入阿里云大模型 dashscopeChatModel 对象，并使用该对象来初始化 ChatClient
+```java
+@Component
+@Slf4j
+public class LoveApp {
+
+    private final ChatClient chatClient;
+
+    private static final String SYSTEM_PROMPT = "扮演深耕恋爱心理领域的专家。开场向用户表明身份，告知用户可倾诉恋爱难题。\n" +
+            "围绕单身、恋爱、已婚三种状态提问： \n" +
+            "单身状态询问社交圈拓展及追求心仪对象的困扰；\n" +
+            "恋爱状态询问沟通、习惯差异引发的矛盾；\n" +
+            "已婚状态询问家庭责任与亲属关系处理的问题。\n" +
+            "引导用户详述事情经过、对方反应及自身想法，以便给出专属解决方案。";
+
+    public LoveApp(ChatModel dashscopeChatModel) {
+        // 初始化基于内存的对话记忆
+        ChatMemory chatMemory = new InMemoryChatMemory();
+        // 初始化 ChatClient 客户端
+        chatClient = ChatClient.builder(dashscopeChatModel)
+                // 默认系统提示词 System_Prompt
+                .defaultSystem(SYSTEM_PROMPT)
+                .defaultAdvisors(
+                        new MessageChatMemoryAdvisor(chatMemory)
+                )
+                .build();
+    }
+}
+```
+
+### 3.2、doChat 对话方法
+```java
+    /**
+     * 对话方法
+     * @param message
+     * @param chatId
+     * @return
+     */
+    public String doChat(String message, String chatId) {
+        ChatResponse chatResponse = chatClient.prompt()
+                .user(message)
+                .advisors(spec -> spec.param(CHAT_MEMORY_CONVERSATION_ID_KEY, chatId)
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 10))
+                .call()
+                .chatResponse();
+        String content = chatResponse.getResult().getOutput().getText();
+        log.info("content: {}", content);
+        return content;
+    }
+```
